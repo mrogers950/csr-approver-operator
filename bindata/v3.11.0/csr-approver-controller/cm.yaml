@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer-config
+  namespace: openshift-csr-approver
+  name: csr-approver-config
 data:
   controller-config.yaml:

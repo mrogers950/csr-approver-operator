@@ -1,8 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: system:openshift:controller:service-serving-cert-signer
+  name: system:openshift:controller:csr-approver
 rules:
+# TODO: change to allow just CSR modification
 - apiGroups:
   - ""
   resources:
