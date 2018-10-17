@@ -53,7 +53,7 @@ items:
         serviceAccountName: openshift-csr-approver-operator
         containers:
         - name: operator
-          image: openshift/origin-csr-approver:latest
+          image: mrogers950/origin-csr-approver:latest
           imagePullPolicy: Always
           command: ["csr-approver", "operator"]
           args:
@@ -87,7 +87,7 @@ items:
     name: instance
   spec:
     managementState: Managed
-    imagePullSpec: openshift/origin-csr-approver:latest
+    imagePullSpec: mrogers950/origin-csr-approver:latest
     version: 3.11.0
     logging:
       level: 4
