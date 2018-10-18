@@ -25,6 +25,7 @@ import (
 	//scsinformerv1alpha1 "github.com/openshift/client-go/servicecertsigner/informers/externalversions/servicecertsigner/v1alpha1"
 	//"github.com/openshift/library-go/pkg/operator/v1alpha1helpers"
 	//"github.com/openshift/library-go/pkg/operator/versioning"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 )
 
 type CSRApproverOperator struct {
+	operatorConfigClient rest.RESTClient
 	// + operatorConfigClient CSRApproverOperatorConfigGetter
 
 	// + csrClient csrclientinterface
@@ -41,9 +43,9 @@ type CSRApproverOperator struct {
 	queue workqueue.RateLimitingInterface
 }
 
-func NewCSRApproverOperator() *CSRApproverOperator {
+func NewCSRApproverOperator(operatorConfigClient rest.RESTClient) *CSRApproverOperator {
 	c := &CSRApproverOperator{
-		// operatorConfigclient:
+		operatorConfigClient: operatorConfigClient,
 		// csrClient:
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "CSRApproverOperator"),
 	}
@@ -59,7 +61,6 @@ func NewCSRApproverOperator() *CSRApproverOperator {
 }
 
 func (c CSRApproverOperator) syncCSRApproverOperatorConfig() error {
-
 	// get operator config instance
 
 	// check management state. Removed, Unmanaged
