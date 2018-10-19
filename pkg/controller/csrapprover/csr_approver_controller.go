@@ -15,6 +15,7 @@ import (
 
 	v1beta12 "k8s.io/api/certificates/v1beta1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers/certificates/v1beta1"
 	listers "k8s.io/client-go/listers/certificates/v1beta1"
 	"k8s.io/client-go/tools/cache"
@@ -160,7 +161,7 @@ func (sc *CSRApproverController) syncCSR(key string) error {
 	if err != nil {
 		return err
 	}
-	csr, err := sc.csrLister.Get(name)
+	cacheCsr, err := sc.csrLister.Get(name)
 	if kapierrors.IsNotFound(err) {
 		return nil
 	}
@@ -168,6 +169,129 @@ func (sc *CSRApproverController) syncCSR(key string) error {
 		return err
 	}
 
-	glog.Infof("sync CSR %v", csr)
+	csr := cacheCsr.DeepCopy()
+
+	_ := &v1beta12.CertificateSigningRequest{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "",
+			APIVersion: "",
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:            "",
+			GenerateName:    "",
+			Namespace:       "",
+			SelfLink:        "",
+			UID:             "",
+			ResourceVersion: "",
+			Generation:      0,
+			CreationTimestamp: v1.Time{
+				Time: time.Time{},
+			},
+			DeletionTimestamp: &v1.Time{
+				Time: time.Time{},
+			},
+			DeletionGracePeriodSeconds: nil,
+			Labels:          nil,
+			Annotations:     nil,
+			OwnerReferences: nil,
+			Initializers: &v1.Initializers{
+				Pending: nil,
+				Result: &v1.Status{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "",
+						APIVersion: "",
+					},
+					ListMeta: v1.ListMeta{
+						SelfLink:        "",
+						ResourceVersion: "",
+						Continue:        "",
+					},
+					Status:  "",
+					Message: "",
+					Reason:  "",
+					Details: &v1.StatusDetails{
+						Name:              "",
+						Group:             "",
+						Kind:              "",
+						UID:               "",
+						Causes:            nil,
+						RetryAfterSeconds: 0,
+					},
+					Code: 0,
+				},
+			},
+			Finalizers:  nil,
+			ClusterName: "",
+		},
+		Spec: v1beta12.CertificateSigningRequestSpec{
+			Request:  nil,
+			Usages:   nil,
+			Username: "",
+			UID:      "",
+			Groups:   nil,
+			Extra:    nil,
+		},
+		Status: v1beta12.CertificateSigningRequestStatus{
+			Conditions:  nil,
+			Certificate: nil,
+		},
+	}
+
+	glog.Infof("sync CSR - CSR: %s, spec: %#v", csr.Name, csr.Spec)
+
+	for _, cond := range csr.Status.Conditions {
+		if cond.Type == v1beta12.CertificateApproved || cond.Type == v1beta12.CertificateDenied {
+			glog.Infof("sync CSR - certificate is approved/denied, returning nil")
+			return nil
+		}
+	}
+
+	for _, allowed := range sc.config.AllowedUsages {
+		seenUsage := false
+		for _, usage := range csr.Spec.Usages {
+			if allowed == string(usage) {
+				seenUsage = true
+				break
+			}
+		}
+		if !seenUsage {
+			return fmt.Errorf("boom usage not allowed")
+		}
+	}
+
+	names, err := collectNamesFromCSR(csr.Spec)
+	if err != nil {
+		return err
+	}
+
+	groups, err := getCSRGroups(csr.Spec)
+	if err != nil {
+		return err
+	}
+
+	err = sc.Allowed(names, groups)
+	if err != nil {
+		return err
+	}
+
+	csr.Status.Conditions = []v1beta12.CertificateSigningRequestCondition{
+		{
+			Type:           v1beta12.CertificateApproved,
+			Reason:         "Usage checks succeeded",
+			Message:        "Approved by the OpenShift CSR Approver",
+			LastUpdateTime: v1.Time{Time: time.Now()},
+		},
+	}
+	_, err = sc.csrClient.CertificateSigningRequests().Update(csr)
+	if err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func convertStringstoKeyUsages(usageStrings []string) ([]v1beta12.KeyUsage, error) {
+	for _, s := range usageStrings {
+
+	}
 }
