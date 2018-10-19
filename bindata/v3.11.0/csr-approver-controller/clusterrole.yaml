@@ -3,27 +3,13 @@ kind: ClusterRole
 metadata:
   name: system:openshift:controller:csr-approver
 rules:
-# TODO: change to allow just CSR modification
 - apiGroups:
-  - ""
+  - "certificates.k8s.io"
   resources:
-  - secrets
+  - certificatesigningrequests
   verbs:
   - get
   - list
   - watch
-  - create
   - update
-  - patch
   - delete
-  - deletecollection
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - patch

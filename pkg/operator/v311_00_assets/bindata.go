@@ -56,30 +56,16 @@ kind: ClusterRole
 metadata:
   name: system:openshift:controller:csr-approver
 rules:
-# TODO: change to allow just CSR modification
 - apiGroups:
-  - ""
+  - "certificates.k8s.io"
   resources:
-  - secrets
+  - certificatesigningrequests
   verbs:
   - get
   - list
   - watch
-  - create
   - update
-  - patch
   - delete
-  - deletecollection
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - patch
 `)
 
 func v3110CsrApproverControllerClusterroleYamlBytes() ([]byte, error) {
@@ -151,10 +137,8 @@ func v3110CsrApproverControllerCmYaml() (*asset, error) {
 
 var _v3110CsrApproverControllerDefaultconfigYaml = []byte(`apiVersion: csrapprover.config.openshift.io/v1alpha1
 kind: CSRApproverConfig
-signer:
-  certFile: /var/run/secrets/signing-key/tls.crt
-  keyFile: /var/run/secrets/signing-key/tls.key
-`)
+allowedNames: []
+allowedUsages: []`)
 
 func v3110CsrApproverControllerDefaultconfigYamlBytes() ([]byte, error) {
 	return _v3110CsrApproverControllerDefaultconfigYaml, nil
