@@ -4,17 +4,15 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"k8s.io/client-go/informers"
+	csrv1alpha1 "github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
 )
 
-type CSRApproverConfig struct {
-}
-
 type CSRApproverOptions struct {
-	Config CSRApproverConfig
+	Config *csrv1alpha1.CSRApproverConfig
 }
 
 func (o *CSRApproverOptions) RunCSRApprover(clientConfig *rest.Config, stopCh <-chan struct{}) error {
@@ -24,7 +22,12 @@ func (o *CSRApproverOptions) RunCSRApprover(clientConfig *rest.Config, stopCh <-
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 2*time.Minute)
 
-	csrApproverController := NewCSRApproverController()
+	csrApproverController := NewCSRApproverController(
+		o.Config,
+		kubeClient.CertificatesV1beta1(),
+		kubeInformers.Certificates().V1beta1().CertificateSigningRequests(),
+		10*time.Minute,
+	)
 
 	kubeInformers.Start(stopCh)
 	go csrApproverController.Run(1, stopCh)

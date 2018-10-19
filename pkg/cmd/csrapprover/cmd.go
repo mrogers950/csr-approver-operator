@@ -7,22 +7,32 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/util/logs"
 
+	"fmt"
+
 	"github.com/golang/glog"
-	//operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
-	//servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
+	csrv1alpha1 "github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
 	"github.com/mrogers950/csr-approver-operator/pkg/controller/csrapprover"
 	"github.com/mrogers950/csr-approver-operator/pkg/version"
+	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/serviceability"
 )
 
 var (
 	componentName = "openshift-csr-approver"
+	configScheme  = runtime.NewScheme()
 )
 
 func init() {
+	if err := operatorv1alpha1.AddToScheme(configScheme); err != nil {
+		panic(err)
+	}
+	if err := csrv1alpha1.AddToScheme(configScheme); err != nil {
+		panic(err)
+	}
 }
 
 type ControllerCommandOptions struct {
@@ -62,10 +72,16 @@ func NewController() *cobra.Command {
 
 // StartController runs the controller
 func (o *ControllerCommandOptions) StartController() error {
+	uncastConfig, err := o.basicFlags.ToConfigObj(configScheme, csrv1alpha1.SchemeGroupVersion)
+	if err != nil {
+		return err
+	}
 
-	// create config to go in approver options
+	config, ok := uncastConfig.(*csrv1alpha1.CSRApproverConfig)
+	if !ok {
+		return fmt.Errorf("unexpected config: %T", uncastConfig)
+	}
 
-	config := csrapprover.CSRApproverConfig{}
 	return controllercmd.NewController(componentName, (&csrapprover.CSRApproverOptions{Config: config}).RunCSRApprover).
 		WithKubeConfigFile(o.basicFlags.KubeConfigFile, nil).
 		//WithLeaderElection(config.LeaderElection, "", componentName+"-lock").

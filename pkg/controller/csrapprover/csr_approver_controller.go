@@ -6,80 +6,67 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
-)
 
-//const (
-//	// ServingCertSecretAnnotation stores the name of the secret to generate into.
-//	//ServingCertSecretAnnotation = "service.alpha.openshift.io/serving-cert-secret-name"
-//	// ServingCertCreatedByAnnotation stores the of the signer common name.  This could be used later to see if the
-//	// services need to have the the serving certs regenerated.  The presence and matching of this annotation prevents
-//	// regeneration
-//	ServingCertCreatedByAnnotation = "service.alpha.openshift.io/serving-cert-signed-by"
-//	// ServingCertErrorAnnotation stores the error that caused cert generation failures.
-//	ServingCertErrorAnnotation = "service.alpha.openshift.io/serving-cert-generation-error"
-//	// ServingCertErrorNumAnnotation stores how many consecutive errors we've hit.  A value of the maxRetries will prevent
-//	// the controller from reattempting until it is cleared.
-//	ServingCertErrorNumAnnotation = "service.alpha.openshift.io/serving-cert-generation-error-num"
-//	// ServiceUIDAnnotation is an annotation on a secret that indicates which service created it, by UID
-//	ServiceUIDAnnotation = "service.alpha.openshift.io/originating-service-uid"
-//	// ServiceNameAnnotation is an annotation on a secret that indicates which service created it, by Name to allow reverse lookups on services
-//	// for comparison against UIDs
-//	ServiceNameAnnotation = "service.alpha.openshift.io/originating-service-name"
-//	// ServingCertExpiryAnnotation is an annotation that holds the expiry time of the certificate.  It accepts time in the
-//	// RFC3339 format: 2018-11-29T17:44:39Z
-//	ServingCertExpiryAnnotation = "service.alpha.openshift.io/expiry"
-//)
+	certv1beta1 "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
+
+	v1beta12 "k8s.io/api/certificates/v1beta1"
+	kapierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/informers/certificates/v1beta1"
+	listers "k8s.io/client-go/listers/certificates/v1beta1"
+	"k8s.io/client-go/tools/cache"
+)
 
 // CSRApproverController is responsible for approval of CSR requests based on the configured attrubute ACL
 type CSRApproverController struct {
-	// client csrclient
+	csrClient certv1beta1.CertificateSigningRequestsGetter
 	// CSRs that need to be checked
 	queue      workqueue.RateLimitingInterface
 	maxRetries int
-	//csrLister    listers.ServiceLister
-	//csrHasSynced cache.InformerSynced
+
+	csrLister    listers.CertificateSigningRequestLister
+	csrHasSynced cache.InformerSynced
+
 	// syncHandler does the work. It's factored out for unit testing
 	syncHandler func(csrKey string) error
+
+	config *v1alpha1.CSRApproverConfig
 }
 
 // NewCSRApproverController creates a new CSRApproverController.
-// TODO this should accept a shared informer
-func NewCSRApproverController() *CSRApproverController {
+func NewCSRApproverController(
+	controllerConfig *v1alpha1.CSRApproverConfig,
+	csrClient certv1beta1.CertificateSigningRequestsGetter,
+	csrInformer v1beta1.CertificateSigningRequestInformer,
+	resyncInterval time.Duration,
+) *CSRApproverController {
 	sc := &CSRApproverController{
 		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		maxRetries: 10,
+		config:     controllerConfig,
+		csrClient:  csrClient,
 	}
 
-	//services.Informer().AddEventHandlerWithResyncPeriod(
-	//	cache.ResourceEventHandlerFuncs{
-	//		AddFunc: func(obj interface{}) {
-	//			service := obj.(*v1.Service)
-	//			glog.V(4).Infof("Adding service %s", service.Name)
-	//			sc.enqueueService(obj)
-	//		},
-	//		UpdateFunc: func(old, cur interface{}) {
-	//			service := cur.(*v1.Service)
-	//			glog.V(4).Infof("Updating service %s", service.Name)
-	//			// Resync on service object relist.
-	//			sc.enqueueService(cur)
-	//		},
-	//	},
-	//	resyncInterval,
-	//)
-	//sc.serviceLister = services.Lister()
-	//sc.serviceHasSynced = services.Informer().GetController().HasSynced
-	//
-	//secrets.Informer().AddEventHandlerWithResyncPeriod(
-	//	cache.ResourceEventHandlerFuncs{
-	//		DeleteFunc: sc.deleteSecret,
-	//	},
-	//	resyncInterval,
-	//)
-	//sc.secretHasSynced = services.Informer().GetController().HasSynced
-	//sc.secretLister = secrets.Lister()
+	csrInformer.Informer().AddEventHandlerWithResyncPeriod(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				csr := obj.(*v1beta12.CertificateSigningRequest)
+				glog.V(4).Infof("Adding CSR %s", csr.Name)
+				sc.enqueueCSR(obj)
+			},
+			UpdateFunc: func(old, cur interface{}) {
+				csr := cur.(*v1beta12.CertificateSigningRequest)
+				glog.V(4).Infof("Updating CSR %s", csr.Name)
+				sc.enqueueCSR(cur)
+			},
+		},
+		resyncInterval,
+	)
+	sc.csrLister = csrInformer.Lister()
+	sc.csrHasSynced = csrInformer.Informer().GetController().HasSynced
 
 	sc.syncHandler = sc.syncCSR
 
@@ -91,9 +78,9 @@ func (sc *CSRApproverController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer sc.queue.ShutDown()
 
-	//if !cache.WaitForCacheSync(stopCh, sc.serviceHasSynced, sc.secretHasSynced) {
-	//	return
-	//}
+	if !cache.WaitForCacheSync(stopCh, sc.csrHasSynced) {
+		return
+	}
 
 	glog.V(5).Infof("Starting workers")
 	for i := 0; i < workers; i++ {
@@ -126,17 +113,17 @@ func (sc *CSRApproverController) deleteCSR(obj interface{}) {
 }
 
 func (sc *CSRApproverController) enqueueCSR(obj interface{}) {
-	//_, ok := obj.(*v1.Service)
-	//if !ok {
-	//	return
-	//}
-	//key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-	//if err != nil {
-	//	glog.Errorf("Couldn't get key for object %+v: %v", obj, err)
-	//	return
-	//}
-	//
-	//sc.queue.Add(key)
+	_, ok := obj.(*v1beta12.CertificateSigningRequest)
+	if !ok {
+		return
+	}
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	if err != nil {
+		glog.Errorf("Couldn't get key for object %+v: %v", obj, err)
+		return
+	}
+
+	sc.queue.Add(key)
 }
 
 // worker runs a worker thread that just dequeues items, processes them, and marks them done.
@@ -169,5 +156,18 @@ func (sc *CSRApproverController) work() bool {
 }
 
 func (sc *CSRApproverController) syncCSR(key string) error {
+	_, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return err
+	}
+	csr, err := sc.csrLister.Get(name)
+	if kapierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	glog.Infof("sync CSR %v", csr)
 	return nil
 }
