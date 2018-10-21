@@ -22,8 +22,12 @@ func (o *CSRApproverOptions) RunCSRApprover(clientConfig *rest.Config, stopCh <-
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 2*time.Minute)
 
+	controllerOpts, err := NewControllerOptions(o.Config)
+	if err != nil {
+		return err
+	}
 	csrApproverController := NewCSRApproverController(
-		o.Config,
+		controllerOpts,
 		kubeClient.CertificatesV1beta1(),
 		kubeInformers.Certificates().V1beta1().CertificateSigningRequests(),
 		10*time.Minute,

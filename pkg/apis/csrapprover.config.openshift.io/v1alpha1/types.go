@@ -12,8 +12,16 @@ import (
 type CSRApproverConfig struct {
 	metav1.TypeMeta `json:",inline"`
 	// TODO: more parameters
-	AllowedNames  []string `json:"allowedNames"`
-	AllowedUsages []string `json:"allowedUsages"`
+	Profiles []CSRApprovalProfile `json:"profiles"`
+}
+
+type CSRApprovalProfile struct {
+	Name            string   `json:"name"`
+	AllowedNames    []string `json:"allowedNames"`
+	AllowedSubjects []string `json:"allowedSubjects"`
+	AllowedUsages   []string `json:"allowedUsages"`
+	AllowedUsers    []string `json:"allowedUsers"`
+	AllowedGroups   []string `json:"allowedGroups"`
 }
 
 // +genclient
