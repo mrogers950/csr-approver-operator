@@ -12,14 +12,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers/certificates/v1beta1"
+	certinformer "k8s.io/client-go/informers/certificates/v1beta1"
 	certv1beta1 "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
 	listers "k8s.io/client-go/listers/certificates/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	csrutil "k8s.io/client-go/util/certificate/csr"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
+	csrapprover "github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
 )
 
 // CSRApproverController is responsible for approval of CSR requests based on the configured attrubute ACL
@@ -85,7 +85,7 @@ func isValidUsage(usage string) bool {
 	return true
 }
 
-func NewControllerOptions(config *v1alpha1.CSRApproverConfig) (*controllerConfig, error) {
+func NewControllerOptions(config *csrapprover.CSRApproverConfig) (*controllerConfig, error) {
 	profiles := make(map[string]permissionProfile, 0)
 
 	// Validate/convert the controller config.
@@ -123,7 +123,7 @@ func NewControllerOptions(config *v1alpha1.CSRApproverConfig) (*controllerConfig
 func NewCSRApproverController(
 	controllerConfig *controllerConfig,
 	csrClient certv1beta1.CertificateSigningRequestsGetter,
-	csrInformer v1beta1.CertificateSigningRequestInformer,
+	csrInformer certinformer.CertificateSigningRequestInformer,
 	resyncInterval time.Duration,
 ) *CSRApproverController {
 	sc := &CSRApproverController{
