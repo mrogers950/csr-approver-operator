@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"reflect"
 
+	"crypto/x509/pkix"
+
 	"github.com/mrogers950/csr-approver-operator/pkg/apis/csrapprover.config.openshift.io/v1alpha1"
 	"k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -421,6 +423,132 @@ func TestAllowedByProfile(t *testing.T) {
 			},
 			csr:            &x509.CertificateRequest{},
 			expectedResult: false,
+		},
+		"restrict-subject-only-ok": {
+			profiles: map[string]permissionProfile{
+				"one": {
+					allowedSubjects: []string{"CN=foo"},
+				},
+			},
+			spec: v1beta1.CertificateSigningRequestSpec{},
+			csr: &x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: "foo"},
+			},
+			expectedResult: true,
+		},
+		"restrict-subject-only-no": {
+			profiles: map[string]permissionProfile{
+				"one": {
+					allowedSubjects: []string{"CN=foo"},
+				},
+			},
+			spec: v1beta1.CertificateSigningRequestSpec{},
+			csr: &x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: "bar"},
+			},
+			expectedResult: false,
+		},
+		"restrict-multiple-match-one": {
+			profiles: map[string]permissionProfile{
+				"notmatch": {
+					allowedNames: []string{"foo", "baz"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("server auth"),
+					},
+					allowedUsers:    []string{"bar"},
+					allowedGroups:   []string{"foogroup"},
+					allowedSubjects: []string{"CN=foo"},
+				},
+				"match": {
+					allowedNames: []string{"bar", "bar2"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("client auth"),
+					},
+					allowedUsers:    []string{"bar", "bar2"},
+					allowedGroups:   []string{"bargroup", "bazgroup"},
+					allowedSubjects: []string{"CN=bar"},
+				},
+			},
+			spec: v1beta1.CertificateSigningRequestSpec{
+				Usages: []v1beta1.KeyUsage{
+					v1beta1.KeyUsage("client auth"),
+				},
+				Username: "bar",
+				Groups:   []string{"bargroup"},
+			},
+			csr: &x509.CertificateRequest{
+				DNSNames: []string{"bar"},
+				Subject:  pkix.Name{CommonName: "bar"},
+			},
+			expectedResult: true,
+		},
+		"restrict-multiple-match-none": {
+			profiles: map[string]permissionProfile{
+				"notmatch": {
+					allowedNames: []string{"foo", "baz"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("server auth"),
+					},
+					allowedUsers:    []string{"bar"},
+					allowedGroups:   []string{"foogroup"},
+					allowedSubjects: []string{"CN=foo"},
+				},
+				"notmatchalso": {
+					allowedNames: []string{"bar", "bar2"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("client auth"),
+					},
+					allowedUsers:    []string{"bar", "bar2"},
+					allowedGroups:   []string{"bargroup", "bazgroup"},
+					allowedSubjects: []string{"CN=bar"},
+				},
+			},
+			spec: v1beta1.CertificateSigningRequestSpec{
+				Usages: []v1beta1.KeyUsage{
+					v1beta1.KeyUsage("client auth"),
+				},
+				Username: "bar",
+				Groups:   []string{"bargroup"},
+			},
+			csr: &x509.CertificateRequest{
+				DNSNames: []string{"bar"},
+				Subject:  pkix.Name{CommonName: "far"},
+			},
+			expectedResult: false,
+		},
+		"restrict-multiple-match-either": {
+			profiles: map[string]permissionProfile{
+				"match": {
+					allowedNames: []string{"foo", "baz"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("server auth"),
+						v1beta1.KeyUsage("client auth"),
+					},
+					allowedUsers:  []string{"bar"},
+					allowedGroups: []string{"foogroup"},
+				},
+				"matchalso": {
+					allowedNames: []string{"bar", "foo"},
+					allowedUsages: []v1beta1.KeyUsage{
+						v1beta1.KeyUsage("client auth"),
+						v1beta1.KeyUsage("data encipherment"),
+					},
+					allowedUsers:  []string{"bar", "bar2"},
+					allowedGroups: []string{"bargroup", "bazgroup", "foogroup"},
+				},
+			},
+			spec: v1beta1.CertificateSigningRequestSpec{
+				Usages: []v1beta1.KeyUsage{
+					v1beta1.KeyUsage("client auth"),
+				},
+				Username: "bar",
+				Groups:   []string{"foogroup"},
+			},
+			csr: &x509.CertificateRequest{
+				DNSNames: []string{"foo"},
+				Subject:  pkix.Name{CommonName: "far"},
+			},
+			expectedResult: true,
 		},
 	}
 
