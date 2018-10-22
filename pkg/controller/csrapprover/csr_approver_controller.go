@@ -97,12 +97,15 @@ func NewControllerOptions(config *v1alpha1.CSRApproverConfig) (*controllerConfig
 		if _, ok := profiles[profile.Name]; ok {
 			return nil, fmt.Errorf("Duplicate allow profiles configured: \"%s\"", profile.Name)
 		}
-		p.allowedUsages = make([]certapi.KeyUsage, 0)
+		usages := make([]certapi.KeyUsage, 0)
 		for _, usage := range profile.AllowedUsages {
 			if !isValidUsage(usage) {
 				return nil, fmt.Errorf("Not a supported certificate Usage: \"%s\"", usage)
 			}
-			p.allowedUsages = append(p.allowedUsages, certapi.KeyUsage(usage))
+			usages = append(usages, certapi.KeyUsage(usage))
+		}
+		if len(usages) > 0 {
+			p.allowedUsages = usages
 		}
 		p.allowedNames = profile.AllowedNames
 		p.allowedGroups = profile.AllowedGroups
@@ -267,15 +270,18 @@ func allowedByProfiles(profiles map[string]permissionProfile, spec certapi.Certi
 			return true
 		}
 
-		if !profile.csrUsageAllowed(spec.Usages) {
-			continue
-		}
-		if !profile.csrGroupsAllowed(spec.Groups) {
-			continue
-		}
 		if !profile.csrUserAllowed(spec.Username) {
 			continue
 		}
+
+		if !profile.csrGroupsAllowed(spec.Groups) {
+			continue
+		}
+
+		if !profile.csrUsageAllowed(spec.Usages) {
+			continue
+		}
+
 		if !profile.csrSubjectAllowed(csr) {
 			continue
 		}
